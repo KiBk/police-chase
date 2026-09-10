@@ -37,17 +37,44 @@ export class Chase {
   const offset=spec.offset??LANE*spec.direction,p=this.route.point(spec.z,offset),cfg=SETUPS[spec.model];
   const halfHeight=Math.max(.42,cfg.height*.35),yaw=p.yaw+(spec.direction<0?Math.PI:0),q=new Quaternion().setFromAxisAngle(up,yaw);
   const body=this.sim.world.createRigidBody(RAPIER.RigidBodyDesc.kinematicPositionBased().setTranslation(p.x-this.origin.x,p.y+halfHeight,spec.z-this.origin.z).setRotation(q).setCcdEnabled(true));
-  const collider=this.sim.world.createCollider(RAPIER.ColliderDesc.cuboid(cfg.width*.46,halfHeight,cfg.length*.46).setMass(cfg.mass).setFriction(.18).setRestitution(.08).setCollisionGroups(0x00040007).setActiveEvents(RAPIER.ActiveEvents.CONTACT_FORCE_EVENTS),body);
+  const collider=this.sim.world.createCollider(RAPIER.ColliderDesc.cuboid(cfg.width*.46,halfHeight,cfg.length*.46).setMass(cfg.mass*.35).setFriction(.10).setRestitution(.02).setCollisionGroups(0x00040007).setActiveEvents(RAPIER.ActiveEvents.CONTACT_FORCE_EVENTS),body);
   const actor={...spec,body,collider,offset,x:p.x,y:p.y,z:spec.z,yaw,speed:spec.speed??0,cruise:spec.speed??16,halfHeight,stun:0,passed:false,mode:'guided',lastImpact:-10};
   this.actors.set(spec.id,actor);this.objects.set(spec.id,actor);return actor;
  }
  addProp(spec){
   if(this.objects.has(spec.id))return;
   const p=this.route.point(spec.z,spec.offset),sizes=spec.kind==='tree'?[.18,spec.h*.42,.18]:spec.kind==='post'?[.05,.45,.05]:spec.kind==='signal'?[.23,2,.18]:spec.kind==='sign'?[.34,1.25,.10]:spec.kind==='cone'?[.22,.32,.22]:spec.kind==='bale'?[.65,.53,.53]:[.56,.43,.3],q=new Quaternion().setFromAxisAngle(up,p.yaw+(spec.direction<0?Math.PI:0));
-  const mass=spec.kind==='tree'?85:spec.kind==='post'?4:spec.kind==='signal'?35:spec.kind==='sign'?14:spec.kind==='cone'?4:spec.kind==='bale'?55:24,anchored=['tree','post','signal','sign'].includes(spec.kind);
+  const mass=spec.kind==='tree'?45:spec.kind==='post'?1.2:spec.kind==='signal'?16:spec.kind==='sign'?5:spec.kind==='cone'?2:spec.kind==='bale'?24:10,anchored=['tree','post','signal','sign'].includes(spec.kind);
   const body=this.sim.world.createRigidBody(RAPIER.RigidBodyDesc.kinematicPositionBased().setTranslation(p.x-this.origin.x,this.route.height(p.x,p.z)+sizes[1],p.z-this.origin.z).setRotation(q).setCcdEnabled(true));
-  const collider=this.sim.world.createCollider(RAPIER.ColliderDesc.cuboid(...sizes).setMass(mass).setFriction(.55).setRestitution(.1).setCollisionGroups(0x00040007).setActiveEvents(RAPIER.ActiveEvents.CONTACT_FORCE_EVENTS),body);
+  const collider=this.sim.world.createCollider(RAPIER.ColliderDesc.cuboid(...sizes).setMass(mass).setFriction(.18).setRestitution(.02).setCollisionGroups(anchored?0x00040003:0x00040007).setActiveEvents(RAPIER.ActiveEvents.CONTACT_FORCE_EVENTS),body);
   this.objects.set(spec.id,{...spec,body,collider,sizes,mass,anchored,active:false,lastImpact:-10});
+ }
+ nearPlayer(o,margin=.25){
+  // Oriented bounds plus a short relative-motion margin release bodies BEFORE
+  // contact solving. Kinematic bodies otherwise deliver an immovable first hit.
+  const p=this.sim.chassis.translation(),b=o.body.translation(),v=this.sim.chassis.linvel(),w=o.body.linvel();
+  const dx=b.x-p.x,dz=b.z-p.z,m=margin+Math.hypot(v.x-w.x,v.z-w.z)*.04,cfg=this.sim.setup;
+  const size=o.sizes??[SETUPS[o.model].width*.46,o.halfHeight,SETUPS[o.model].length*.46];
+  if(Math.abs(b.y-p.y)>size[1]+cfg.height*.55+.25)return false;
+  if(Math.hypot(dx,dz)>cfg.length*.65+Math.hypot(size[0],size[2])+m)return false;
+  const q=this.sim.chassis.rotation(),r=o.body.rotation(),yaw=Math.atan2(2*(q.w*q.y+q.x*q.z),1-2*(q.y*q.y+q.z*q.z)),other=Math.atan2(2*(r.w*r.y+r.x*r.z),1-2*(r.y*r.y+r.z*r.z));
+  const axes=[[Math.cos(yaw),-Math.sin(yaw)],[Math.sin(yaw),Math.cos(yaw)],[Math.cos(other),-Math.sin(other)],[Math.sin(other),Math.cos(other)]];
+  for(const[x,z]of axes){const projection=(a)=>Math.abs(x*a[0]+z*a[1]);if(Math.abs(dx*x+dz*z)>cfg.width*.57*projection(axes[0])+cfg.length*.53*projection(axes[1])+size[0]*projection(axes[2])+size[2]*projection(axes[3])+m)return false;}
+  return true;
+ }
+ prepareContacts(){
+  for(const o of this.objects.values()){
+   if(this.actors.has(o.id)){
+    if(o.mode==='guided'&&this.nearPlayer(o,.12)){
+     o.body.setBodyType(RAPIER.RigidBodyType.Dynamic,true);o.mode='loose';o.stun=.35;
+     o.body.setLinvel({x:Math.sin(o.yaw)*o.speed,y:0,z:Math.cos(o.yaw)*o.speed},true);
+    }
+   }else if(o.anchored&&!o.active&&this.nearPlayer(o)){
+    // Stay visually planted until struck, but yield with finite mass on the
+    // very first contact. Gravity is restored by the actual contact event.
+    o.body.setBodyType(RAPIER.RigidBodyType.Dynamic,true);o.body.setGravityScale(0,true);o.active=true;
+   }
+  }
  }
  ensure(){
   const p=this.position,index=Math.floor(p.z/CHUNK),keep=new Set();
@@ -69,15 +96,13 @@ export class Chase {
   const playerA=this.playerHandles.has(a.handle),playerB=this.playerHandles.has(b.handle);
   if(!playerA&&!playerB)return;const other=playerA?b:a;
   const o=[...this.objects.values()].find(o=>o.body.handle===other.handle);if(!o)return;
-  const impulse=e.totalForceMagnitude()*STEP;if(impulse<20)return;
+  const impulse=e.totalForceMagnitude()*STEP;if(impulse<(this.actors.has(o.id)?20:.25))return;
   if(o.anchored&&!o.hit){
-   const v=this.sim.chassis.linvel();o.body.setBodyType(RAPIER.RigidBodyType.Dynamic,true);o.active=true;
-   o.body.applyImpulse({x:v.x*o.mass*.55,y:o.mass*.6,z:v.z*o.mass*.55},true);
-   o.body.applyTorqueImpulse({x:v.z*o.mass*.3,y:0,z:-v.x*o.mass*.3},true);
+   o.body.setBodyType(RAPIER.RigidBodyType.Dynamic,true);o.body.setGravityScale(1,true);o.collider.setCollisionGroups(0x00040007);o.active=true;
   }
   if(impulse>300)this.sim.solverBoostUntil=this.sim.time+.5;
-  if(this.actors.has(o.id)&&o.mode==='guided'){
-   o.body.setBodyType(RAPIER.RigidBodyType.Dynamic,true);o.body.setLinvel({x:Math.sin(o.yaw)*o.speed,y:0,z:Math.cos(o.yaw)*o.speed},true);o.mode='loose';o.stun=2.5;
+  if(this.actors.has(o.id)){
+   o.body.setBodyType(RAPIER.RigidBodyType.Dynamic,true);o.mode='loose';o.stun=2.5;
   }
   if(this.time-o.lastImpact<.55)return;o.lastImpact=this.time;
   if(o.kind==='traffic'||o.kind==='police'){
@@ -91,7 +116,9 @@ export class Chase {
    if(a.mode==='loose'){
     const b=a.body.translation();a.x=b.x+this.origin.x;a.z=b.z+this.origin.z;a.y=b.y-a.halfHeight;a.offset=this.route.offset(a.x,a.z);a.stun-=dt;
     a.yaw=Math.atan2(2*(a.body.rotation().w*a.body.rotation().y+a.body.rotation().x*a.body.rotation().z),1-2*(a.body.rotation().y**2+a.body.rotation().z**2));
-    if(a.stun>0)continue;a.body.setBodyType(RAPIER.RigidBodyType.KinematicPositionBased,true);a.mode='guided';a.speed=Math.min(10,Math.hypot(a.body.linvel().x,a.body.linvel().z));
+    const q=a.body.rotation();
+    if(a.stun>0||this.nearPlayer(a,.65)||1-2*(q.x*q.x+q.z*q.z)<.7)continue;
+    a.speed=Math.min(10,Math.hypot(a.body.linvel().x,a.body.linvel().z));a.body.setBodyType(RAPIER.RigidBodyType.KinematicPositionBased,true);a.mode='guided';
    }
    if(a.kind==='cross'){
     a.offset+=a.direction*6*dt;const target=this.route.point(a.z,a.offset);a.x=target.x;a.y=target.y;a.yaw=target.yaw-(a.direction>0?Math.PI/2:-Math.PI/2);
@@ -140,8 +167,8 @@ export class Chase {
   if(this.state==='countdown'){this.countdown-=dt;if(this.countdown<=0){this.state='running';this.tell('LOSE THE PATROL');}return;}
   if(this.state!=='running')return;
   this.time+=dt;this.scan-=dt;if(this.scan<=0)this.ensure();
-  const assisted=this.assist.update(this.sim,input,dt);this.sim.setInput(assisted.throttle,assisted.steer);
-  this.updateActors(dt);if(this.scan<=0)this.scan=.3;
+  const assisted=this.assist.update(this.sim,input,dt);this.sim.steeringRate=assisted.steeringRate;this.sim.setInput(assisted.throttle,assisted.steer);
+  this.updateActors(dt);this.prepareContacts();if(this.scan<=0)this.scan=.3;
   this.sim.step(dt);const p=this.position;
   this.distance=Math.max(this.distance,p.z-8);
   if(this.time>4){

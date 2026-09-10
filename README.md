@@ -6,7 +6,8 @@ Public site: https://police-chase.apps.kibk.net/
 Choose one of ten imported cars. Accelerate, brake and steer along a narrow,
 6.4 m two-way road with right-hand traffic. One marked patrol follows, with
 flashing roof lights and an optional two-tone siren. A raised chase camera,
-side-mounted patrol proximity indicator and small route map keep the next decision visible.
+vertical patrol proximity indicator and small route map keep the next decision visible.
+The orange dot marks you; the blue patrol dot rises towards it as the gap closes.
 
 The road is generated continuously from a new random seed each run: smooth
 bends, gentle hills, village junctions, traffic lights, hedges and fields.
@@ -42,7 +43,8 @@ recorded audio. Modern WebGL 2 and WebAssembly support are required.
 
 The checks cover deterministic/continuous road generation, road contact and
 rebasing, two-way traffic and signals, movable blockers, capture/escape,
-police overshoots, long driving runs, camera continuity, and the inherited
+police overshoots, long driving runs, camera continuity, steering authority,
+slide recovery, fast off-centre prop and traffic impacts, and the inherited
 suspension's mass, elastic recovery, travel limits and model picking.
 
 ## Architecture and limits
@@ -69,14 +71,21 @@ instance with a moving model driven by its released physics body.
 
 Traffic and police are guided, lightweight collision bodies, not ten complete
 suspension simulations. Contact with the player releases their guidance for a
-short dynamic collision response. The patrol uses a continuous pursuit heading,
+short dynamic collision response. Nearby bodies become dynamic before contact,
+so their first impact also uses finite mass. Traffic uses 35% of its nominal
+vehicle mass; light scenery has reduced mass and friction. Anchored props remain
+upright without gravity until a real hit, then fall under gravity. These are
+deliberately forgiving game collision settings. The patrol uses a continuous pursuit heading,
 brakes beside a stopped player, and turns back after overshooting. These AI
 controllers are intentionally simpler than the player's physical drivetrain.
 
-Steering assistance smooths digital input, limits the requested lateral
-acceleration with speed and countersteers a developing slide. It never selects
-a lane or follows the route for the player. Brake-slip feedback reduces wheel
-lock-up (a simple game ABS); no engine traction control is added.
+Steering keeps the original full lock available at every speed. Digital turn-in
+is progressive, but reversing or releasing the steering responds faster. Mild
+caster-like self-alignment starts only beyond normal cornering slip, is weaker
+while a steering key is held, and switches off in the air, in reverse or during
+a rollover. It adds no tyre grip, yaw forces or lane following. Brake-slip
+feedback reduces wheel lock-up (a simple game ABS); no engine traction control
+is added. See [handling notes](docs/handling.md) for research and validation.
 
 The 6.4 m road and shoulders are drivable. Trees, posts and signs are breakable;
 buildings and hedges remain decorative. Chassis stiffness,

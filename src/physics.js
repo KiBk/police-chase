@@ -323,7 +323,7 @@ export class Suspension {
     const chassisForward=V(0,0,1).applyQuaternion(Q(this.chassis.rotation()));chassisForward.y=0;chassisForward.normalize();
     const chassisSide=V(chassisForward.z,0,-chassisForward.x),velocity=this.chassis.linvel();
     this.roadSpeed=V(velocity.x,0,velocity.z).dot(chassisForward);
-    const target=this.driving?this.input.steer*.38:0;this.steering+=clamp(target-this.steering,-1.2*dt,1.2*dt);
+    const target=this.driving?this.input.steer*.38:0,rate=this.steeringRate??1.2;this.steering+=clamp(target-this.steering,-rate*dt,rate*dt);
     const cfg=this.setup,drive=this.drivetrain?.step(dt,{enabled:this.driving,request:this.input.throttle,speed:this.roadSpeed,wheelOmega:cfg.drive.reduce((sum,i)=>sum+this.tyres[i].omega,0)/cfg.drive.length});
     if(cfg&&this.driving){
       const airspeed=Math.hypot(velocity.x,velocity.z);

@@ -6,8 +6,15 @@
 @media(max-height:640px){.overlay{top:23%}h1{font-size:30px}.small-print,.keys-help{display:none}#intro{margin-bottom:12px}.garage{margin-bottom:10px}.bottom-hud{bottom:37px}.radar{display:none}footer{bottom:12px}.touch-controls{bottom:112px}}
 @media(prefers-reduced-motion:reduce){*{transition:none!important}}
 
-.pursuit{position:absolute;right:4%;top:49%;width:145px;pointer-events:none;padding:16px;background:#f4f1e4e6}.pursuit>span{font-size:9px}.pursuit .track{height:5px;margin:13px 0 10px}.pursuit small{font-size:7px;line-height:1.5}.pursuit b{font-size:17px}.bottom-hud .speed{margin-left:auto}
-@media(max-width:760px){.route-tag,.top-stats{top:91px}.radar{top:155px}.pursuit{right:5%;top:42%;width:115px;padding:12px}.pursuit>span{font-size:7px}.pursuit b{font-size:14px}.pursuit small{font-size:6px}.overlay{top:23%}}
-#game[data-state="ready"] .pursuit,#game[data-state="paused"] .pursuit{opacity:.65}
-
+/* A fixed player dot and a moving patrol dot share one vertical distance scale. */
+.pursuit{position:absolute;right:4%;top:47%;transform:translateY(-25%);width:62px;padding:12px 11px;pointer-events:none;background:#f4f1e4db;text-align:center}
+.pursuit-scale{position:relative;height:132px;margin:0 0 11px}
+.pursuit-scale::before{content:'';position:absolute;left:50%;top:8%;bottom:8%;width:2px;transform:translateX(-50%);background:#6c80764a;border-radius:2px}
+.pursuit-scale i{position:absolute;left:50%;width:10px;height:10px;transform:translate(-50%,-50%);border:2px solid #f4f1e4;border-radius:50%;box-shadow:0 0 0 1px #3b535333}
+.you-dot{top:8%;background:#d87742;z-index:2}.you-label{position:absolute;top:5%;right:calc(50% + 12px);font:6px var(--mono);color:#77523d}
+#patrol-dot{top:24%;background:#5089ab;transition:top .12s linear,background .2s;z-index:3}#patrol-dot.close{background:#bb5b50;box-shadow:0 0 0 3px #bb5b5020}
+.pursuit .patrol-caption{display:block;font:6px var(--mono);letter-spacing:1px;color:#617a82}.pursuit b{display:block;font:14px var(--mono);margin:5px 0 9px}.pursuit small{font:6px/1.6 var(--mono);letter-spacing:0}
+.bottom-hud .speed{margin-left:auto}
+@media(max-width:760px){.route-tag,.top-stats{top:91px}.radar{top:155px}.pursuit{right:5%;top:47%;width:48px;padding:10px 9px}.pursuit-scale{height:107px}.pursuit b{font-size:12px}.pursuit small{font-size:5px}.you-label{font-size:5px;right:calc(50% + 10px)}.overlay{top:23%}}
 #game:not([data-state="running"]):not([data-state="countdown"]) .pursuit{display:none}
+@media(prefers-reduced-motion:reduce){#patrol-dot{transition:none}}

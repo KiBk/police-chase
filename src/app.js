@@ -74,7 +74,8 @@ function renderUI(){
  $('distance').innerHTML=`${(game.distance/1000).toFixed(2)} <small>km</small>`;$('best').innerHTML=`${(best/1000).toFixed(2)} <small>km</small>`;
  $('speed').textContent=Math.round(game.sim.groundSpeed*3.6);$('gear').textContent=game.sim.drivetrain?.snapshot().gear??'N';
  $('condition').textContent=`${Math.round(100-game.damage)}%`;$('health-bar').style.width=`${100-game.damage}%`;$('health-bar').style.background=game.damage>60?'#b86249':'#64836a';
- $('gap').textContent=`${Math.round(game.gap)} m`;$('pursuit-bar').style.width=`${clamp(1-game.gap/180,0,1)*100}%`;
+ $('gap').textContent=`${Math.round(game.gap)} m`;$('patrol-dot').style.top=`${8+clamp(game.gap/180,0,1)*84}%`;
+ $('patrol-dot').classList.toggle('close',game.gap<15);
  $('pursuit-label').textContent=game.capture>.1?`MOVE! ${Math.max(0,3-game.capture).toFixed(1)} s`:game.escape>0?`ESCAPING · ${Math.ceil(5-game.escape)} s`:game.gap<15?'RIGHT BEHIND YOU':'LOSE THEM AT 160 M';
  const p=game.position,off=Math.abs(game.route.offset(p.x,p.z));$('surface').textContent=off>3.6?'ROUGH VERGE · LOW GRIP':'ASPHALT · FULL GRIP';
  $('countdown').textContent=game.state==='countdown'?Math.ceil(game.countdown):'';$('message').textContent=game.message;$('message').classList.toggle('visible',game.state==='running'&&game.time<game.messageUntil&&!paused);
