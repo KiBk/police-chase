@@ -1,0 +1,10 @@
+node_modules/
+evidence/
+public/*.js
+public/vendor/
+public/assets/
+.DS_Store
+.env
+.env.*
+*.pem
+*.key

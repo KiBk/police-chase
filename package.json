@@ -1,0 +1,15 @@
+{
+  "name": "police-chase",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "node scripts/build.mjs",
+    "test": "node --test test/*.test.mjs",
+    "serve": "python3 scripts/serve.py"
+  },
+  "dependencies": {
+    "@dimforge/rapier3d-compat": "0.20.0",
+    "three": "0.180.0"
+  }
+}
