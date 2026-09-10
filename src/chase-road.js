@@ -1,5 +1,6 @@
 import RAPIER from '@dimforge/rapier3d-compat';
 import {Road} from './terrain.js';
+import {ROAD_WIDTH,smooth} from './route.js';
 const SIZE=20,STEP=.5,CELLS=SIZE/STEP;
 export class ChaseRoad extends Road {
  constructor(world,route,origin){
@@ -13,8 +14,9 @@ export class ChaseRoad extends Road {
   const a=h(0,0),b=h(1,0),c=h(0,1),d=h(1,1);
   return u+v<1?a+(b-a)*u+(c-a)*v:d+(c-d)*(1-u)+(b-d)*(1-v);
  }
- gripAt(x,z){return Math.abs(this.route.offset(x+this.origin.x,z+this.origin.z))>3.6?.69:1;}
- rollingAt(x,z){return Math.abs(this.route.offset(x+this.origin.x,z+this.origin.z))>3.6?2.7:1;}
+ verge(x,z){return smooth((Math.abs(this.route.offset(x+this.origin.x,z+this.origin.z))-ROAD_WIDTH/2)/2);}
+ gripAt(x,z){return 1-.09*this.verge(x,z);}
+ rollingAt(x,z){return 1+.18*this.verge(x,z);}
  ensure(x,z){
   const tx=Math.floor((x+this.origin.x)/SIZE),tz=Math.floor((z+this.origin.z)/SIZE);
   if(tx===this.tx&&tz===this.tz)return;this.tx=tx;this.tz=tz;const keep=new Set();

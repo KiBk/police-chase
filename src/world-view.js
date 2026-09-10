@@ -1,5 +1,5 @@
 import * as T from 'three';
-import {CHUNK,ROAD_WIDTH,random} from './route.js';
+import {CHUNK,ROAD_WIDTH,LANE,random} from './route.js';
 const up=new T.Vector3(0,1,0),dummy=new T.Object3D();
 const mat=color=>new T.MeshStandardMaterial({color,roughness:1});
 const materials={road:mat('#515959'),line:mat('#dedcc8'),grass:mat('#8c9a6b'),trunk:mat('#756958'),leaves:mat('#607653'),hedge:mat('#637352'),brick:mat('#b5a18c'),roof:mat('#636665'),window:mat('#bacac8'),pole:mat('#4d5759'),white:mat('#efe9d7'),orange:mat('#dc783e'),hay:mat('#b7a16a')};
@@ -34,7 +34,7 @@ export class WorldView {
   }
   const marks=[];
   for(let z=z0;z<z0+CHUNK;z+=2){
-   for(const offset of[-3.08,3.08]){const p=route.point(z+1,offset);marks.push({p:[p.x,p.y+.029,z+1-z0],s:[.07,.012,2.06],yaw:p.yaw});}
+   for(const offset of[-ROAD_WIDTH/2+.12,ROAD_WIDTH/2-.12]){const p=route.point(z+1,offset);marks.push({p:[p.x,p.y+.029,z+1-z0],s:[.07,.012,2.06],yaw:p.yaw});}
    if(Math.floor(z/2)%3===0&&!route.junction(index)){const p=route.point(z+1);marks.push({p:[p.x,p.y+.03,z+1-z0],s:[.11,.013,2.4],yaw:p.yaw});}
   }
   instances(group,geometries.box,materials.line,marks);
@@ -48,8 +48,8 @@ export class WorldView {
   for(let j=0;j<8;j++)for(const side of[-1,1]){
    const z=z0+j*5+2.5;if(route.junction(index)&&j<2)continue;
    if(random(route.seed,index,j+350)<.22)continue;
-   const p=route.point(z,side*9.2);hedges.push({p:[p.x,p.y+.65,z-z0],s:[1.2,1.3,4.8],yaw:p.yaw});
-   const f=route.point(z,side*5.8);posts.push({p:[f.x,f.y+.45,z-z0],s:[.09,.9,.09]});
+   const p=route.point(z,side*11);hedges.push({p:[p.x,p.y+.65,z-z0],s:[1.2,1.3,4.8],yaw:p.yaw});
+   const f=route.point(z,side*9.4);posts.push({p:[f.x,f.y+.45,z-z0],s:[.09,.9,.09]});
   }
   if(index%6===3||index%6===4)for(const side of[-1,1])for(let j=0;j<3;j++){
    const z=z0+j*12+5,p=route.point(z,side*(19+j%2*2));
@@ -63,14 +63,14 @@ export class WorldView {
   const sign=route.structures(index).find(f=>f.kind==='sign');if(sign){const p=route.point(sign.z,sign.offset),g=new T.Group();g.position.set(p.x,route.height(p.x,sign.z),sign.z-z0);g.rotation.y=p.yaw;group.add(g);this.sign(g);this.anchors.set(sign.id,{owner:group,group:g});}
   if(bricks.length){instances(group,geometries.box,materials.brick,bricks);instances(group,geometries.box,materials.roof,roofs);instances(group,geometries.box,materials.window,windows);}
   if(route.junction(index)){
-   const p=route.point(z0),cross=box(group,[33,.035,6.4],[p.x,p.y+.018,0],materials.road);cross.rotation.y=p.yaw;
+   const p=route.point(z0),cross=box(group,[33,.035,ROAD_WIDTH],[p.x,p.y+.018,0],materials.road);cross.rotation.y=p.yaw;
    for(const direction of[-1,1]){
-    const s=route.point(z0-direction*7,direction*3.8),g=new T.Group();g.position.set(s.x,s.y,z0-direction*7-z0);g.rotation.y=s.yaw+(direction<0?Math.PI:0);group.add(g);
+    const s=route.point(z0-direction*7,direction*9),g=new T.Group();g.position.set(s.x,s.y,z0-direction*7-z0);g.rotation.y=s.yaw+(direction<0?Math.PI:0);group.add(g);
     box(g,[.10,3.8,.10],[0,1.9,0],materials.pole);box(g,[.37,.98,.25],[0,3.65,0],materials.pole);
     this.anchors.set(`signal${index}-${direction}`,{owner:group,group:g});
     const lights=[];for(let k=0;k<3;k++){const lm=new T.MeshStandardMaterial({color:'#282e2d',emissive:0,roughness:.5});const m=mesh(new T.SphereGeometry(.105,10,8),lm,g,0,3.92-k*.27,-.15);m.scale.z=.4;lights.push(m);own.push(m.geometry);}
     this.signals.push({index,lights,group});
-    const stop=route.point(z0-direction*7,direction*1.6);const marking=box(group,[2.9,.02,.35],[stop.x,stop.y+.055,-direction*7],materials.line);marking.rotation.y=stop.yaw;
+    const stop=route.point(z0-direction*7,direction*LANE);const marking=box(group,[ROAD_WIDTH/2-.3,.02,.35],[stop.x,stop.y+.055,-direction*7],materials.line);marking.rotation.y=stop.yaw;
    }
   }
   this.chunks.set(index,{group,own});

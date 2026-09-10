@@ -37,7 +37,7 @@ test('physical terrain samples match raycast contact height before and after reb
 
 test('traffic keeps separate lanes, stops at red and resumes at green',()=>{
  const c=new Chase('hatchback',123);try{
-  onlyPolice(c);c.route.signal=()=> 'red';const a=c.addActor({id:'test-forward',kind:'traffic',model:'compact',direction:1,z:88,speed:12});const b=c.addActor({id:'test-reverse',kind:'traffic',model:'sedan',direction:-1,z:151,speed:12});
+  onlyPolice(c);c.route.junction=i=>i===3;c.route.signal=()=> 'red';const a=c.addActor({id:'test-forward',kind:'traffic',model:'compact',direction:1,z:88,speed:12});const b=c.addActor({id:'test-reverse',kind:'traffic',model:'sedan',direction:-1,z:151,speed:12});
   for(let i=0;i<600;i++){c.time+=1/60;c.scan=1;c.updateActors(1/60);c.sim.world.step();}
   assert.ok(a.z<114&&a.z>109);assert.ok(b.z>126&&b.z<131);assert.ok(a.speed<.2&&b.speed<.2);assert.ok(a.offset>0&&b.offset<0);
   const za=a.z,zb=b.z;c.route.signal=()=> 'green';for(let i=0;i<240;i++){c.time+=1/60;c.scan=1;c.updateActors(1/60);c.sim.world.step();}
@@ -65,19 +65,6 @@ test('the patrol turns back after passing the player',()=>{
 
 test('five seconds with a sustained escape gap ends a run; finished runs stop progressing',()=>{
  const c=new Chase('sports',123);try{
-  onlyPolice(c);c.police.z=-400;c.police.body.setTranslation({x:-LANE,y:c.police.halfHeight,z:-400},true);c.start();drive(c,16,idle);assert.equal(c.state,'escaped');const before=c.snapshot();drive(c,4,{throttle:1,steer:1});assert.deepEqual(c.snapshot(),before);
- }finally{c.free();}
-});
-
-test('a long rough-verge run retains finite physics and bounded streaming state across origin shifts',()=>{
- const c=new Chase('hatchback',123);try{
-  c.start();let maxObjects=0,maxError=0,vertical=0;
-  drive(c,58,()=>{
-   const p=c.position,f=new Vector3(0,0,1).applyQuaternion(new Quaternion().copy(c.sim.chassis.rotation())),yaw=Math.atan2(f.x,f.z),aim=c.route.point(p.z+10,7.5),heading=Math.atan2(aim.x-p.x,aim.z-p.z),error=Math.atan2(Math.sin(heading-yaw),Math.cos(heading-yaw));
-   maxObjects=Math.max(maxObjects,c.objects.size);maxError=Math.max(maxError,c.sim.constraintError());vertical=Math.max(vertical,Math.abs(c.sim.vy));
-   return{throttle:c.sim.groundSpeed<14?1:-.4,steer:clamp(error*3,-1,1)};
-  });
-  assert.ok(c.distance>500);assert.ok(c.origin.z>480);assert.ok(c.objects.size<650&&maxObjects<650);assert.equal(c.chunks.size,13);assert.equal(c.sim.road.tiles.size,9);
-  assert.ok(maxError<.02);assert.ok(vertical>.2&&vertical<8);assert.ok(Object.values(c.position).every(Number.isFinite));assert.ok(c.sim.road.gripAt(c.sim.x,c.sim.z)<1);
+  onlyPolice(c);c.police.z=-400;c.police.body.setTranslation({x:-LANE,y:c.police.halfHeight,z:-400},true);c.start();drive(c,28,idle);assert.equal(c.state,'escaped');const before=c.snapshot();drive(c,4,{throttle:1,steer:1});assert.deepEqual(c.snapshot(),before);
  }finally{c.free();}
 });

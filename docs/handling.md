@@ -1,5 +1,10 @@
 # Keyboard handling and forgiving contacts
 
+Historical notes for the previous simulation-oriented assist. The chase now
+uses the dedicated [arcade controller](arcade-handling.md); the finite-mass
+collision approach below remains in use. `driver-assist.js` and its comparison
+tests are retained as a record of the earlier handling experiments.
+
 The first assist limited steering using a target lateral acceleration divided
 by speed squared, then subtracted yaw-rate feedback. In an 80 km/h hatchback
 test, this reduced actual peak steering from 0.38 rad to 0.033 rad and peak

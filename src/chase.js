@@ -2,9 +2,10 @@ import RAPIER from '@dimforge/rapier3d-compat';
 import {Vector3,Quaternion} from 'three';
 import {Suspension,STEP} from './physics.js';
 import {SETUPS} from './setups.js';
-import {Route,CHUNK,LANE,clamp} from './route.js';
+import {Route,CHUNK,LANE,ROAD_WIDTH,clamp} from './route.js';
 import {ChaseRoad} from './chase-road.js';
-import {DriverAssist} from './driver-assist.js';
+import {ArcadeDriver} from './arcade-driver.js';
+export const ESCAPE_DISTANCE=160;
 const V=(x=0,y=0,z=0)=>new Vector3(x,y,z),up=V(0,1,0);
 const angle=x=>Math.atan2(Math.sin(x),Math.cos(x));
 export class Chase {
@@ -12,18 +13,19 @@ export class Chase {
   this.route=new Route(seed);this.sim=new Suspension(id);this.sim.road.free();
   this.sim.road=new ChaseRoad(this.sim.world,this.route,this.sim.worldOrigin);this.sim.ground=null;
   this.sim.setDriving(true);this.time=0;this.state='ready';this.countdown=3;this.damage=0;this.distance=0;this.nearMisses=0;this.barriersHit=0;this.capture=0;this.escape=0;this.overturned=0;
-  this.assist=new DriverAssist();this.sim.brakeAssist=true;
+  this.driver=new ArcadeDriver(LANE);this.sim.brakeAssist=true;this.lastCrash=-100;this.graceUntil=6;this.recoveries=0;this.lastGoodSpeed=8;
   this.actors=new Map();this.objects=new Map();this.chunks=new Set();this.crossings=new Map();this.contacts=new Map();this.message='';this.messageUntil=0;this.origin=this.sim.worldOrigin;this.scan=0;
   this.playerHandles=new Set(this.sim.dynamic.map(b=>b.handle));
   for(const b of this.sim.dynamic){
    const p=b.translation();b.setTranslation({x:p.x-LANE,y:p.y,z:p.z+8},true);
    for(let j=0;j<b.numColliders();j++){const c=b.collider(j);if(c.collisionGroups()){c.setCollisionGroups(0x00020005);c.setActiveEvents(RAPIER.ActiveEvents.CONTACT_FORCE_EVENTS);}}
   }
-  this.sim.refresh();this.sim.onRebase=offset=>{
+  this.sim.refresh();const rest=this.sim.chassis.translation();this.restPose=this.sim.dynamic.map(body=>({body,position:V().copy(body.translation()).sub(rest),rotation:new Quaternion().copy(body.rotation())}));
+  this.sim.onRebase=offset=>{
    for(const item of this.objects.values()){const p=item.body.translation();item.body.setTranslation({x:p.x-offset.x,y:p.y,z:p.z-offset.z},true);}
   };
   this.sim.road.onForce=e=>this.collision(e);
-  this.police=this.addActor({id:'police',kind:'police',model:'wagon',z:-26,direction:1,speed:0});
+  this.police=this.addActor({id:'police',kind:'police',model:'wagon',z:-47,direction:1,speed:0});
   this.ensure();
  }
  get position(){const p=this.sim.chassis.translation();return{x:p.x+this.origin.x,y:p.y,z:p.z+this.origin.z};}
@@ -32,6 +34,16 @@ export class Chase {
  signal(z){const i=Math.round(z/CHUNK);return [-1,1].every(d=>this.objects.get(`signal${i}-${d}`)?.hit)?'green':this.route.signal(z,this.time);}
  start(){if(this.state==='ready'){this.state='countdown';this.countdown=3;}}
  tell(message){this.message=message;this.messageUntil=this.time+2.3;}
+ recover(){
+  const here=this.position,z=here.z+5;
+  const offsets=[clamp(this.route.offset(here.x,here.z),-6.8,6.8),LANE,-LANE,6.8,-6.8,0];
+  const offset=offsets.find(o=>{const p=this.route.point(z,o);return [...this.actors.values()].every(a=>Math.hypot(a.x-p.x,a.z-z)>7);})??LANE;
+  const p=this.route.point(z,offset),q=new Quaternion().setFromAxisAngle(up,p.yaw),speed=clamp(this.lastGoodSpeed*.65,5,12);
+  for(const r of this.restPose){const local=r.position.clone().applyQuaternion(q);r.body.setTranslation({x:p.x-this.origin.x+local.x,y:this.route.height(p.x,z)+this.sim.restHeight+.32+local.y,z:z-this.origin.z+local.z},true);r.body.setRotation(q.clone().multiply(r.rotation),true);r.body.setLinvel({x:Math.sin(p.yaw)*speed,y:0,z:Math.cos(p.yaw)*speed},true);r.body.setAngvel({x:0,y:0,z:0},true);}
+  this.sim.tyres.forEach((t,i)=>{t.omega=speed/this.sim.wheelParts[i].radius;t.slip=0;t.load=0;t.contact=false;t.force.set(0,0,0);});
+  this.sim.road.states.clear();this.sim.rebasedPatches=null;this.sim.refresh();this.driver.reset(offset);
+  this.overturned=0;this.capture=0;this.graceUntil=this.time+3;this.damage=Math.min(95,this.damage+5);this.lastCrash=this.time;this.recoveries++;this.tell('BACK ON YOUR WHEELS');
+ }
  addActor(spec){
   if(this.objects.has(spec.id))return this.objects.get(spec.id);
   const offset=spec.offset??LANE*spec.direction,p=this.route.point(spec.z,offset),cfg=SETUPS[spec.model];
@@ -106,7 +118,9 @@ export class Chase {
   }
   if(this.time-o.lastImpact<.55)return;o.lastImpact=this.time;
   if(o.kind==='traffic'||o.kind==='police'){
-   this.damage=clamp(this.damage+clamp((impulse-120)*.010,0,35),0,100);this.tell(o.kind==='police'?'PATROL CONTACT':'TRAFFIC COLLISION');
+   const penalty=clamp((impulse-600)*.003,0,14);
+   if(penalty>1&&this.time-this.lastCrash>1){this.damage=clamp(this.damage+penalty,0,100);this.lastCrash=this.time;this.graceUntil=this.time+2.5;this.capture=0;this.driver.reset(this.route.offset(this.position.x,this.position.z));}
+   this.tell(penalty>1?'SHAKE IT OFF':'JUST A SCRAPE');
   }else if(!o.hit){o.hit=true;this.barriersHit++;this.damage=clamp(this.damage+Math.min(o.anchored?clamp(o.mass/30,.1,3):8,Math.max(0,impulse-1300)*.0015),0,100);this.tell(o.kind==='tree'?'TREE DOWN':o.kind==='sign'||o.kind==='signal'?'SIGN DOWN':'BARRIER CLEARED');}
  }
  updateActors(dt){
@@ -123,14 +137,15 @@ export class Chase {
    if(a.kind==='cross'){
     a.offset+=a.direction*6*dt;const target=this.route.point(a.z,a.offset);a.x=target.x;a.y=target.y;a.yaw=target.yaw-(a.direction>0?Math.PI/2:-Math.PI/2);
    }else{
-    let target=a.kind==='police'?clamp(speed+2+(p.z-a.z)*.035,15,36):a.cruise;
+    let target=a.kind==='police'?clamp(speed*.97+.3+(this.gap-55)*.012,13,30):a.cruise;
     let targetOffset=LANE*a.direction;
     if(a.kind==='police'){
-     targetOffset=clamp(this.route.offset(p.x,p.z),-5.6,5.6);
+     targetOffset=clamp(this.route.offset(p.x,p.z),-8,8);
+     if(this.lastCrash>=0&&this.time<this.graceUntil)target=Math.min(target,Math.max(0,speed-5));
      if(speed<5&&this.gap<16)target=Math.min(target,Math.max(0,(this.gap-5)*.8));
      const blocked=[...this.actors.values()].some(b=>b!==a&&b.kind==='traffic'&&b.direction===1&&b.z-a.z>0&&b.z-a.z<22&&Math.abs(b.offset-a.offset)<2);
      if(blocked)targetOffset=-LANE;
-     if(Math.abs(a.offset)>3.6)target*=.76;
+     if(Math.abs(a.offset)>ROAD_WIDTH/2)target*=.98;
     }else{
      const j=Math.round((a.z+a.direction*32)/CHUNK);
      for(let k=j-1;k<=j+1;k++)if(this.route.junction(k)&&this.signal(k*CHUNK)!=='green'){
@@ -143,9 +158,9 @@ export class Chase {
      // Heading changes continuously, including a U-turn after an overshoot.
      const z=p.z>a.z?Math.min(p.z,a.z+Math.max(9,a.speed*.65)):p.z;
      const aim=this.route.point(z,targetOffset),error=angle(Math.atan2(aim.x-a.x,z-a.z)-a.yaw);
-     target=Math.min(target,36/(1+Math.abs(error)*4));
+     target=Math.min(target,30/(1+Math.abs(error)*2.5));
      for(const b of this.actors.values())if(b!==a&&Math.abs(b.offset-a.offset)<1.8&&b.z-a.z>0&&b.z-a.z<17)target=Math.min(target,Math.max(3,(b.z-a.z-5)*.7));
-     a.speed+=clamp(target-a.speed,-7*dt,2.8*dt);a.yaw+=clamp(error,-1.15*dt,1.15*dt);
+     a.speed+=clamp(target-a.speed,-8*dt,3.3*dt);a.yaw+=clamp(error,-1.15*dt,1.15*dt);
      a.x+=Math.sin(a.yaw)*a.speed*dt;a.z+=Math.cos(a.yaw)*a.speed*dt;a.offset=this.route.offset(a.x,a.z);a.y=this.route.height(a.x,a.z);
     }else{
      a.speed+=clamp(target-a.speed,-6*dt,2.8*dt);a.offset+=clamp(targetOffset-a.offset,-2.7*dt,2.7*dt);
@@ -157,8 +172,8 @@ export class Chase {
    if(a.kind==='traffic'&&!a.passed&&a.z<p.z-3&&a.z>p.z-8){a.passed=true;if(Math.abs(a.x-p.x)<3.2&&this.sim.groundSpeed>12&&this.time-a.lastImpact>2){this.nearMisses++;this.tell('CLOSE CALL +100');}}
   }
   if(this.scan>0)return;
-  for(const i of this.chunks)if(this.route.junction(i)&&Math.abs(i*CHUNK-p.z)<180&&this.signal(i*CHUNK)==='red'){
-   const tick=Math.floor(this.time/5),previous=this.crossings.get(i);if(previous===tick)continue;this.crossings.set(i,tick);
+  for(const i of this.chunks)if(this.route.junction(i)&&i*CHUNK-p.z>90&&i*CHUNK-p.z<190&&this.signal(i*CHUNK)==='red'){
+   const tick=Math.floor(this.time/7),previous=this.crossings.get(i);if(previous===tick)continue;this.crossings.set(i,tick);
    const id=`cross-${i}-${tick}`;this.addActor({id,kind:'cross',model:tick%2?'compact':'hatchback',z:i*CHUNK,direction:tick%2?1:-1,offset:tick%2?-15:15,speed:6});
   }
   for(const[id,a]of this.actors)if(a.kind==='cross'&&Math.abs(a.offset)>23){this.sim.world.removeRigidBody(a.body);this.actors.delete(id);this.objects.delete(id);}
@@ -167,18 +182,28 @@ export class Chase {
   if(this.state==='countdown'){this.countdown-=dt;if(this.countdown<=0){this.state='running';this.tell('LOSE THE PATROL');}return;}
   if(this.state!=='running')return;
   this.time+=dt;this.scan-=dt;if(this.scan<=0)this.ensure();
-  const assisted=this.assist.update(this.sim,input,dt);this.sim.steeringRate=assisted.steeringRate;this.sim.setInput(assisted.throttle,assisted.steer);
+  const assisted=this.driver.prepare(this,input,dt);this.sim.steeringRate=3;this.sim.setInput(assisted.throttle,assisted.steer);
   this.updateActors(dt);this.prepareContacts();if(this.scan<=0)this.scan=.3;
-  this.sim.step(dt);const p=this.position;
+  this.sim.step(dt);this.driver.afterStep(this,dt);const p=this.position;
   this.distance=Math.max(this.distance,p.z-8);
-  if(this.time>4){
-   this.capture=this.gap<8&&this.sim.groundSpeed<4?this.capture+dt:Math.max(0,this.capture-dt*2);
-   this.escape=this.gap>160?this.escape+dt:0;
-   this.overturned=Math.abs(this.sim.roll)>1.05||Math.abs(this.sim.pitch)>1.05?this.overturned+dt:Math.max(0,this.overturned-dt);
-   if(this.damage>=100)this.finish('wrecked');else if(this.capture>3||this.overturned>4)this.finish('caught');else if(this.escape>5)this.finish('escaped');
+  if(this.time-this.lastCrash>7)this.damage=Math.max(0,this.damage-dt*.65);
+  const orientation=this.sim.chassis.rotation(),upY=1-2*(orientation.x**2+orientation.z**2);
+  const tilted=upY<.45||Math.abs(this.route.offset(p.x,p.z))>16;
+  this.overturned=tilted?this.overturned+dt:Math.max(0,this.overturned-dt*2);
+  if(!tilted&&this.sim.tyres.filter(t=>t.contact).length>=2)this.lastGoodSpeed=this.sim.groundSpeed;
+  if(this.overturned>.85)this.recover();
+  const encounter=this.route.encounter(Math.floor((p.z+100)/CHUNK)),ahead=encounter.z-p.z;
+  if(ahead>50&&ahead<105&&this.notice!==encounter.base&&this.time>this.messageUntil){
+   this.notice=encounter.base;
+   const warning={barriers:'BARRIERS AHEAD',weave:'FIND YOUR WAY THROUGH',bypass:'USE THE VERGE',crossing:'CROSSING AHEAD'}[encounter.kind];if(warning)this.tell(warning);
+  }
+  if(this.time>6){
+   this.capture=this.time>=this.graceUntil&&this.gap<8&&this.sim.groundSpeed<4?this.capture+dt:Math.max(0,this.capture-dt*2);
+   this.escape=this.gap>ESCAPE_DISTANCE?this.escape+dt:0;
+   if(this.damage>=100)this.finish('wrecked');else if(this.capture>3)this.finish('caught');else if(this.escape>5)this.finish('escaped');
   }
  }
  finish(reason){this.state=reason;this.sim.setInput(0,0);}
- snapshot(){return{state:this.state,seed:this.route.seed,setup:this.sim.setupId,time:this.time,distance:this.distance,score:this.score,damage:this.damage,gap:this.gap,capture:this.capture,escape:this.escape,nearMisses:this.nearMisses,objects:this.objects.size,chunks:this.chunks.size,tiles:this.sim.road.tiles.size,position:this.position,physics:this.sim.snapshot()};}
+ snapshot(){return{state:this.state,seed:this.route.seed,setup:this.sim.setupId,time:this.time,distance:this.distance,score:this.score,damage:this.damage,gap:this.gap,capture:this.capture,escape:this.escape,recoveries:this.recoveries,nearMisses:this.nearMisses,objects:this.objects.size,chunks:this.chunks.size,tiles:this.sim.road.tiles.size,position:this.position,physics:this.sim.snapshot()};}
  free(){this.sim.free();}
 }

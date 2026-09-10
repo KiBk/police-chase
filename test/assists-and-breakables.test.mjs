@@ -4,6 +4,7 @@ import {Suspension,STEP} from '../src/physics.js';
 import {Chase} from '../src/chase.js';
 import {DriverAssist} from '../src/driver-assist.js';
 import {Vector3} from 'three';
+import {LANE} from '../src/route.js';
 function launch(s,speed=22){s.setDriving(true);for(const b of s.dynamic)b.setLinvel({x:0,y:0,z:speed},true);s.tyres.forEach((t,i)=>{t.omega=speed/s.wheelParts[i].radius;});}
 test('brake assistance preserves wheel rotation during an emergency stop',()=>{
  const result=[];
@@ -49,7 +50,7 @@ test('fast off-centre impacts release posts and traffic before contact without f
  for(const kind of['post','sign','tree','traffic'])for(const side of[-1,1]){
   const c=new Chase('hatchback',123);try{
    for(const[id,o]of c.objects)if(id!=='police'){c.sim.world.removeRigidBody(o.body);c.objects.delete(id);c.actors.delete(id);}c.ensure=()=>{};
-   const spec={kind,id:'target',z:kind==='traffic'?19:16,offset:1.6+side*.72,h:5,j:0,index:0};
+   const spec={kind,id:'target',z:kind==='traffic'?19:16,offset:LANE+side*.72,h:5,j:0,index:0};
    kind==='traffic'?c.addActor({...spec,model:'wagon',direction:1,speed:0}):c.addProp(spec);
    c.state='running';launch(c.sim,30);let roll=0,pitch=0,vy=0,releasedBeforeHit=false;const o=c.objects.get('target');
    for(let i=0;i<360;i++){c.step({throttle:0,steer:0});roll=Math.max(roll,Math.abs(c.sim.roll));pitch=Math.max(pitch,Math.abs(c.sim.pitch));vy=Math.max(vy,Math.abs(c.sim.vy));if(o.body.isDynamic()&&o.lastImpact<0&&!o.hit)releasedBeforeHit=true;}
@@ -61,10 +62,10 @@ test('fast off-centre impacts release posts and traffic before contact without f
 test('trees, roadside posts, signs and traffic lights release and move under a player hit',()=>{
  for(const kind of['tree','post','signal','sign']){const c=new Chase('hatchback',123);try{
   for(const[id,o]of c.objects)if(id!=='police'){c.sim.world.removeRigidBody(o.body);c.objects.delete(id);c.actors.delete(id);}
-  c.addProp({kind,id:'hit-target',z:17,offset:1.6,h:5,j:0,index:0});const o=c.objects.get('hit-target');assert.equal(o.body.isKinematic(),true);c.start();for(let i=0;i<240*9;i++)c.step({throttle:1,steer:0});
+  c.addProp({kind,id:'hit-target',z:17,offset:LANE,h:5,j:0,index:0});const o=c.objects.get('hit-target');assert.equal(o.body.isKinematic(),true);c.start();for(let i=0;i<240*9;i++)c.step({throttle:1,steer:0});
   assert.ok(o.hit&&o.active);assert.ok(o.body.isDynamic());assert.ok(Math.abs(o.body.rotation().x)>.15);assert.ok(Math.abs(o.body.translation().z+c.origin.z-17)>.5);assert.ok(c.damage<=3);assert.ok(c.sim.constraintError()<.003);
  }finally{c.free();}}
 });
 test('destroying both signal heads releases the junction instead of leaving an invisible red light',()=>{
- const c=new Chase('hatchback',123);try{c.route.signal=()=> 'red';assert.equal(c.signal(120),'red');c.objects.get('signal3--1').hit=true;assert.equal(c.signal(120),'red');c.objects.get('signal3-1').hit=true;assert.equal(c.signal(120),'green');}finally{c.free();}
+ const c=new Chase('hatchback',123);try{c.route.signal=()=> 'red';for(const direction of[-1,1])c.addProp({kind:'signal',id:`signal3-${direction}`,z:120-direction*7,offset:direction*9,direction,index:3});assert.equal(c.signal(120),'red');c.objects.get('signal3--1').hit=true;assert.equal(c.signal(120),'red');c.objects.get('signal3-1').hit=true;assert.equal(c.signal(120),'green');}finally{c.free();}
 });

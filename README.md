@@ -3,29 +3,36 @@
 A standalone procedural driving game derived from Suspension Lab.
 Public site: https://police-chase.apps.kibk.net/
 
-Choose one of ten imported cars. Accelerate, brake and steer along a narrow,
-6.4 m two-way road with right-hand traffic. One marked patrol follows, with
+Choose one of ten imported cars. Accelerate, brake and move across a generous,
+9.6 m two-way road with right-hand traffic. One marked patrol follows, with
 flashing roof lights and an optional two-tone siren. A raised chase camera,
 vertical patrol proximity indicator and small route map keep the next decision visible.
 The orange dot marks you; the blue patrol dot rises towards it as the gap closes.
 
 The road is generated continuously from a new random seed each run: smooth
 bends, gentle hills, village junctions, traffic lights, hedges and fields.
-Red lights stop ordinary traffic and release crossing vehicles. The rough verge
-has less tyre grip and greater rolling resistance. Cones, orange barriers and
+Spaced overtaking, barrier, weaving, crossing and verge-bypass encounters have
+clear stretches between them. Red lights stop ordinary traffic and release
+crossing vehicles while they are still well ahead. Broad, gently bumpy verges
+retain almost all the road's grip. Cones, orange barriers and
 hay bales can be pushed aside. Trees, roadside posts, speed signs and traffic
 lights detach and topple after a hit. Clean close passes add points; hard traffic hits
 damage the car.
 
 ## Play
 
-- Arrow keys or WASD: accelerate, brake/reverse, steer.
+- Arrow keys or WASD: accelerate, brake/reverse, move left/right across the road.
+- Hold a direction to move continuously; release to settle and follow the bend.
+- The grass shoulders are usable escape routes, with visible suspension travel.
 - Space: brake/reverse. P or Esc: pause. R: return to the garage on a new road.
 - Touch controls support simultaneous steering and throttle/braking.
 - Start gives a three-second countdown. Select cars in the garage with arrows.
 - Stay over 160 m from the patrol for five seconds to escape.
 - Stay below 4 m/s within 8 m of the patrol for three seconds to be caught.
-- Four seconds overturned, or 100% damage, also ends the chase.
+- A rollover automatically rights the car after a brief tumble. Hard collisions
+  give a short capture grace period; condition slowly recovers between impacts.
+- Repeated hard hits reaching 100% damage end the chase. Try again starts a new
+  random route and countdown with one click.
 - Best forward distance stays in localStorage. No accounts or backend state.
 
 ## Run and check
@@ -43,8 +50,9 @@ recorded audio. Modern WebGL 2 and WebAssembly support are required.
 
 The checks cover deterministic/continuous road generation, road contact and
 rebasing, two-way traffic and signals, movable blockers, capture/escape,
-police overshoots, long driving runs, camera continuity, steering authority,
-slide recovery, fast off-centre prop and traffic impacts, and the inherited
+police overshoots, long driving runs, camera continuity, arcade lane changes,
+verge excursions, airborne behavior, rollover recovery, encounter spacing,
+fast off-centre prop and traffic impacts, and the inherited
 suspension's mass, elastic recovery, travel limits and model picking.
 
 ## Architecture and limits
@@ -58,6 +66,8 @@ same route. Surface triangles are sampled at 0.5 m for physical contact.
 
 The player retains Suspension Lab's 240 Hz linked suspension, brush tyre model,
 combined-slip limit, automatic powertrain and three-section elastic chassis.
+A dedicated arcade controller adjusts planar velocity and yaw while grounded;
+the suspension, vertical motion, body roll/pitch and contacts remain physical.
 Physics shifts its origin every ~60 m. Actor bodies, terrain, rendering and the
 chase camera all follow that shift. The camera's world-space position is kept
 continuous and its heading remains upright through rollovers.
@@ -79,15 +89,17 @@ deliberately forgiving game collision settings. The patrol uses a continuous pur
 brakes beside a stopped player, and turns back after overshooting. These AI
 controllers are intentionally simpler than the player's physical drivetrain.
 
-Steering keeps the original full lock available at every speed. Digital turn-in
-is progressive, but reversing or releasing the steering responds faster. Mild
-caster-like self-alignment starts only beyond normal cornering slip, is weaker
-while a steering key is held, and switches off in the air, in reverse or during
-a rollover. It adds no tyre grip, yaw forces or lane following. Brake-slip
-feedback reduces wheel lock-up (a simple game ABS); no engine traction control
-is added. See [handling notes](docs/handling.md) for research and validation.
+`src/arcade-driver.js` turns keyboard input into a continuous target position
+across the road, with bounded lateral and yaw correction shared by every linked
+body. Releasing steering settles the car along the road instead of requiring
+countersteer. These corrections stop when airborne or overturned. Brake-slip
+feedback reduces wheel lock-up (a simple game ABS). Forward acceleration gets
+a small arcade boost and speed is softly limited to about 108 km/h. This is an
+intentional game handling layer, not a calibrated vehicle dynamics simulator.
+See [arcade handling notes](docs/arcade-handling.md) for limits and validation;
+[earlier handling research](docs/handling.md) records the previous approach.
 
-The 6.4 m road and shoulders are drivable. Trees, posts and signs are breakable;
+The 9.6 m road and roughly 4 m shoulders are drivable. Trees, posts and signs are breakable;
 buildings and hedges remain decorative. Chassis stiffness,
 vehicle specifications and tyre parameters are representative choices for
 fictional designs. There are no pedestrians, permanent crash deformation,

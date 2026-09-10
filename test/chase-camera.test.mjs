@@ -22,3 +22,14 @@ test('rollovers keep the camera upright and follow travel without a heading flip
   assert.ok(new Vector3(0,1,0).applyQuaternion(camera.quaternion).y>.8);
  }
 });
+test('road-following camera stays steady through lane changes, slides and rollovers',()=>{
+ const a=new ChaseCamera(new PerspectiveCamera()),b=new ChaseCamera(new PerspectiveCamera()),up=new Vector3(0,1,0);
+ for(let i=0;i<360;i++){
+  const roadHeading=.3*Math.sin(i/180),position=new Vector3(Math.sin(i/80)*4,.6,i*.4),normal=new Quaternion().setFromAxisAngle(up,roadHeading);
+  const sliding=new Quaternion().setFromAxisAngle(up,roadHeading+Math.sin(i/12)*.8).multiply(new Quaternion().setFromAxisAngle(new Vector3(0,0,1),i*.04));
+  a.update({position,rotation:normal},{x:0,z:24},24,1/60,false,{x:0,z:0},roadHeading);
+  b.update({position,rotation:sliding},{x:12*Math.sin(i/12),z:20},24,1/60,false,{x:0,z:0},roadHeading);
+  assert.ok(a.camera.position.distanceTo(b.camera.position)<1e-6);assert.ok(a.camera.quaternion.angleTo(b.camera.quaternion)<1e-6);
+  assert.ok(new Vector3(0,1,0).applyQuaternion(b.camera.quaternion).y>.8);
+ }
+});

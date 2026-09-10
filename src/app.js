@@ -1,6 +1,6 @@
 import * as T from 'three';
 import {RoomEnvironment} from 'three/addons/environments/RoomEnvironment.js';
-import {Chase} from './chase.js';
+import {Chase,ESCAPE_DISTANCE} from './chase.js';
 import {ChaseCamera} from './chase-camera.js';
 import {STEP} from './physics.js';
 import {makeCar} from './model.js';
@@ -10,7 +10,7 @@ import {DrivingInput} from './driving-input.js';
 import {VehicleAudio} from './sound.js';
 import {WorldView} from './world-view.js';
 import {TrafficView} from './traffic-view.js';
-import {CHUNK,clamp} from './route.js';
+import {CHUNK,ROAD_WIDTH,clamp} from './route.js';
 const $=id=>document.getElementById(id),seed=()=>crypto.getRandomValues(new Uint32Array(1))[0];
 const input=new DrivingInput(),sound=new VehicleAudio();
 let game,car,paused=false,busy=false,last=performance.now(),accumulator=0,uiTime=0,previousState='',best=0,siren=null,sirenGain=null,frameDuration=16.7;
@@ -39,7 +39,7 @@ async function newGame(id='hatchback'){
  catch(error){$('title').textContent='The garage needs a restart.';$('intro').textContent='A model could not load. Reload the page to try again.';console.error(error);}
  finally{busy=false;$('start').disabled=false;$('prev').disabled=$('next').disabled=false;last=performance.now();}
 }
-function start(){if(busy||!game)return;if(paused){setPause(false);return;}if(game.state==='ready'){game.start();clearInput();previousState='';renderUI();}else newGame(game.sim.setupId);}
+function start(){if(busy||!game)return;if(paused){setPause(false);return;}if(game.state==='ready'){game.start();clearInput();previousState='';renderUI();}else newGame(game.sim.setupId).then(()=>{if(game?.state==='ready')game.start();});}
 $('start').addEventListener('click',start);$('prev').addEventListener('click',()=>newGame(cycleSetup(game.sim.setupId,-1)));$('next').addEventListener('click',()=>newGame(cycleSetup(game.sim.setupId,1)));
 $('pause').addEventListener('click',()=>setPause(!paused));$('help').addEventListener('click',()=>{setPause(true);$('instructions').showModal();});$('close-help').addEventListener('click',()=>$('instructions').close());
 $('sound').addEventListener('click',async()=>{
@@ -64,9 +64,9 @@ function renderUI(){
  if(state!==previousState){
   previousState=state;const intro=state==='ready',ended=['caught','wrecked','escaped'].includes(state);
   $('garage').hidden=!intro;$('result').hidden=!ended;$('hint').hidden=!intro;$('pause').disabled=!['running','countdown','paused'].includes(state);$('pause').textContent=paused?'▶':'Ⅱ';$('pause').setAttribute('aria-label',paused?'Resume chase':'Pause chase');
-  if(intro){$('title').innerHTML='A different road.<br>The same <em>trouble.</em>';$('intro').innerHTML='One patrol on your tail. Two lanes to choose from.<br>Find a gap, risk the verge, and make your escape.';$('start').innerHTML='Start the chase <span>↗</span>';}
+  if(intro){$('title').innerHTML='A different road.<br>The same <em>trouble.</em>';$('intro').innerHTML='One patrol on your tail. Plenty of room for trouble.<br>Dodge traffic, cut across the verge, and make your escape.';$('start').innerHTML='Start the chase <span>↗</span>';}
   else if(paused){$('title').innerHTML='Take a <em>breather.</em>';$('intro').textContent='Your chase is paused. The patrol can wait.';$('start').innerHTML='Back to the chase <span>↗</span>';}
-  else if(ended){clearInput();sound.setBlocked(true);persist();$('title').innerHTML=state==='escaped'?'Out of <em>sight.</em>':state==='wrecked'?'End of <em>the road.</em>':'The road<br><em>caught up.</em>';$('intro').textContent=state==='escaped'?'You lost the patrol. A fresh road is waiting.':state==='wrecked'?'Too many hard hits. Pick another car and try a different route.':'The patrol caught you. There is always another way through.';$('start').innerHTML='Find a new road <span>↗</span>';$('result').innerHTML=`<span>DISTANCE<strong>${(game.distance/1000).toFixed(2)} km</strong></span><span>SCORE<strong>${game.score}</strong></span><span>CLOSE CALLS<strong>${game.nearMisses}</strong></span>`;}
+  else if(ended){clearInput();sound.setBlocked(true);persist();$('title').innerHTML=state==='escaped'?'Out of <em>sight.</em>':state==='wrecked'?'End of <em>the road.</em>':'The road<br><em>caught up.</em>';$('intro').textContent=state==='escaped'?'You lost the patrol. A fresh road is waiting.':state==='wrecked'?'Too many hard hits. Pick another car and try a different route.':'The patrol caught you. There is always another way through.';$('start').innerHTML='Try again <span>↗</span>';$('result').innerHTML=`<span>DISTANCE<strong>${(game.distance/1000).toFixed(2)} km</strong></span><span>SCORE<strong>${game.score}</strong></span><span>CLOSE CALLS<strong>${game.nearMisses}</strong></span>`;}
   $('overlay').setAttribute('aria-hidden',String(state==='running'||state==='countdown'));$('overlay').inert=state==='running'||state==='countdown';
  }
  const cfg=game.sim.setup;$('car-name').textContent=cfg.name;$('car-spec').textContent=`${cfg.powertrain.hp} hp · ${cfg.drive.length===4?'AWD':cfg.drive[0]===0?'FWD':'RWD'} · ${Math.round(cfg.mass).toLocaleString()} kg`;
@@ -74,10 +74,10 @@ function renderUI(){
  $('distance').innerHTML=`${(game.distance/1000).toFixed(2)} <small>km</small>`;$('best').innerHTML=`${(best/1000).toFixed(2)} <small>km</small>`;
  $('speed').textContent=Math.round(game.sim.groundSpeed*3.6);$('gear').textContent=game.sim.drivetrain?.snapshot().gear??'N';
  $('condition').textContent=`${Math.round(100-game.damage)}%`;$('health-bar').style.width=`${100-game.damage}%`;$('health-bar').style.background=game.damage>60?'#b86249':'#64836a';
- $('gap').textContent=`${Math.round(game.gap)} m`;$('patrol-dot').style.top=`${8+clamp(game.gap/180,0,1)*84}%`;
+ $('gap').textContent=`${Math.round(game.gap)} m`;$('patrol-dot').style.top=`${8+clamp(game.gap/ESCAPE_DISTANCE,0,1)*84}%`;
  $('patrol-dot').classList.toggle('close',game.gap<15);
- $('pursuit-label').textContent=game.capture>.1?`MOVE! ${Math.max(0,3-game.capture).toFixed(1)} s`:game.escape>0?`ESCAPING · ${Math.ceil(5-game.escape)} s`:game.gap<15?'RIGHT BEHIND YOU':'LOSE THEM AT 160 M';
- const p=game.position,off=Math.abs(game.route.offset(p.x,p.z));$('surface').textContent=off>3.6?'ROUGH VERGE · LOW GRIP':'ASPHALT · FULL GRIP';
+ $('pursuit-label').textContent=game.lastCrash>=0&&game.time<game.graceUntil?'RECOVER · KEEP GOING':game.capture>.1?`MOVE! ${Math.max(0,3-game.capture).toFixed(1)} s`:game.escape>0?`ESCAPING · ${Math.ceil(5-game.escape)} s`:game.gap<15?'RIGHT BEHIND YOU':`LOSE THEM AT ${ESCAPE_DISTANCE} M`;
+ const p=game.position,off=Math.abs(game.route.offset(p.x,p.z));$('surface').textContent=off>ROAD_WIDTH/2?'OPEN VERGE · KEEP GOING':'ASPHALT · FULL GRIP';
  $('countdown').textContent=game.state==='countdown'?Math.ceil(game.countdown):'';$('message').textContent=game.message;$('message').classList.toggle('visible',game.state==='running'&&game.time<game.messageUntil&&!paused);
 }
 function drawMap(){
@@ -89,7 +89,7 @@ function drawMap(){
 }
 function render(dt){
  const frame=car.update(game.sim),p=frame.position,speed=game.sim.groundSpeed;
- const forward=cameraRig.update(frame,game.sim.chassis.linvel(),speed,dt,game.state==='ready',game.origin);
+ const forward=cameraRig.update(frame,game.sim.chassis.linvel(),speed,dt,game.state==='ready',game.origin,Math.atan(game.route.slope(game.position.z+speed*.5)));
  sun.position.copy(p).add(new T.Vector3(-25,38,-12));sun.target.position.copy(p);sun.target.updateMatrixWorld();land.position.x=p.x;land.position.z=p.z;
  world.update(game);traffic.update(game,paused?0:dt);
  renderer.setViewport(0,0,innerWidth,innerHeight);renderer.setScissorTest(false);renderer.autoClear=true;renderer.render(scene,camera);
