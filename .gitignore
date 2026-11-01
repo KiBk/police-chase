@@ -8,3 +8,9 @@ public/assets/
 .env.*
 *.pem
 *.key
+
+/_site/
+
+__pycache__/
+
+*.pyc
